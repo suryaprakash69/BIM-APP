@@ -6,7 +6,8 @@ import DetectedObjectsBar from './components/DetectedObjectsBar';
 import ReplacementPanel from './components/ReplacementPanel';
 import UploadZone from './components/UploadZone';
 import ReplacementHistory from './components/ReplacementHistory';
-import { detectObjects, replaceObjectInImage } from './services/openai';
+import ApiKeyModal from './components/ApiKeyModal';
+import { detectObjects, replaceObjectInImage, getStoredApiKey } from './services/openai';
 import './App.css';
 
 export default function App() {
@@ -24,6 +25,7 @@ export default function App() {
   const [sidebarActive, setSidebarActive] = useState('Objects');
   const [showHistory, setShowHistory] = useState(false);
   const [error, setError] = useState(null);
+  const [showApiKeyModal, setShowApiKeyModal] = useState(!getStoredApiKey());
 
   const runDetection = useCallback(async (imageData) => {
     setDetecting(true);
@@ -137,6 +139,14 @@ export default function App() {
     });
   }, []);
 
+  if (showApiKeyModal) {
+    return (
+      <div className="app">
+        <ApiKeyModal onSaved={() => setShowApiKeyModal(false)} />
+      </div>
+    );
+  }
+
   if (appState === 'upload') {
     return (
       <div className="app">
@@ -231,6 +241,18 @@ export default function App() {
           onClose={() => setShowHistory(false)}
         />
       )}
+
+      {showApiKeyModal && (
+        <ApiKeyModal onSaved={() => setShowApiKeyModal(false)} />
+      )}
+
+      <button
+        className="apikey-settings-btn"
+        onClick={() => setShowApiKeyModal(true)}
+        title="Change OpenAI API Key"
+      >
+        🔑 API Key
+      </button>
     </div>
   );
 }

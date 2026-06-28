@@ -1,11 +1,23 @@
 import OpenAI from 'openai';
 
-const client = new OpenAI({
-  apiKey: import.meta.env.VITE_OPENAI_API_KEY,
-  dangerouslyAllowBrowser: true,
-});
+const LS_KEY = 'bim_openai_key';
+
+export function getStoredApiKey() {
+  return localStorage.getItem(LS_KEY) || '';
+}
+
+export function saveApiKey(key) {
+  localStorage.setItem(LS_KEY, key.trim());
+}
+
+function makeClient() {
+  const key = getStoredApiKey();
+  if (!key) throw new Error('No API key set. Please enter your OpenAI API key.');
+  return new OpenAI({ apiKey: key, dangerouslyAllowBrowser: true });
+}
 
 export async function detectObjects(imageBase64) {
+  const client = makeClient();
   const base64Data = imageBase64.includes(',') ? imageBase64.split(',')[1] : imageBase64;
   const mimeType = imageBase64.startsWith('data:image/png') ? 'image/png' : 'image/jpeg';
 
@@ -60,9 +72,9 @@ Rules:
 }
 
 export async function replaceObjectInImage(imageBase64, objectInfo, replacementName, replacementStyle) {
+  const apiKey = getStoredApiKey();
   const base64Data = imageBase64.includes(',') ? imageBase64.split(',')[1] : imageBase64;
 
-  // Create mask with the bounding box region transparent
   const maskBase64 = await createMask(imageBase64, objectInfo.bbox);
 
   const prompt = `Replace only the ${objectInfo.name} with a ${replacementName} (${replacementStyle} style).
@@ -70,7 +82,6 @@ Keep absolutely everything else identical: room layout, perspective, camera angl
 The replacement should blend naturally with photorealistic lighting and shadows matching the scene.
 Make it look seamless and photorealistic.`;
 
-  // Try DALL-E 2 inpainting first
   try {
     const imageBlob = base64ToBlob(base64Data, 'image/png');
     const maskBlob = base64ToBlob(maskBase64, 'image/png');
@@ -85,9 +96,7 @@ Make it look seamless and photorealistic.`;
 
     const res = await fetch('https://api.openai.com/v1/images/edits', {
       method: 'POST',
-      headers: {
-        Authorization: `Bearer ${import.meta.env.VITE_OPENAI_API_KEY}`,
-      },
+      headers: { Authorization: `Bearer ${apiKey}` },
       body: formData,
     });
 
@@ -99,13 +108,13 @@ Make it look seamless and photorealistic.`;
     const data = await res.json();
     return `data:image/png;base64,${data.data[0].b64_json}`;
   } catch (e) {
-    console.warn('Inpainting failed, falling back to full regeneration:', e.message);
-    // Fallback: regenerate via gpt-image-1 with the original image
+    console.warn('Inpainting failed, falling back to gpt-image-1:', e.message);
     return await regenerateWithReplacement(base64Data, objectInfo, replacementName, replacementStyle);
   }
 }
 
 async function regenerateWithReplacement(base64Data, objectInfo, replacementName, replacementStyle) {
+  const client = makeClient();
   const response = await client.images.edit({
     model: 'gpt-image-1',
     image: await base64ToFile(base64Data, 'room.png', 'image/png'),
@@ -123,18 +132,15 @@ async function createMask(imageBase64, bbox) {
   return new Promise((resolve) => {
     const img = new Image();
     img.onload = () => {
-      // Make canvas square for DALL-E 2 requirement
       const size = Math.max(img.width, img.height);
       const canvas = document.createElement('canvas');
       canvas.width = size;
       canvas.height = size;
       const ctx = canvas.getContext('2d');
 
-      // Fill with opaque black (keep everything)
       ctx.fillStyle = 'rgba(0,0,0,255)';
       ctx.fillRect(0, 0, size, size);
 
-      // Make bounding box transparent (edit here)
       const offsetX = (size - img.width) / 2;
       const offsetY = (size - img.height) / 2;
       const x = offsetX + bbox.x * img.width;
@@ -143,7 +149,6 @@ async function createMask(imageBase64, bbox) {
       const h = bbox.height * img.height;
 
       ctx.clearRect(x, y, w, h);
-
       resolve(canvas.toDataURL('image/png').split(',')[1]);
     };
     img.src = imageBase64;
@@ -160,15 +165,4 @@ function base64ToBlob(base64, mimeType) {
 async function base64ToFile(base64, filename, mimeType) {
   const blob = base64ToBlob(base64, mimeType);
   return new File([blob], filename, { type: mimeType });
-}
-
-export async function generateSuggestionImage(furnitureName, style, color) {
-  const response = await client.images.generate({
-    model: 'dall-e-3',
-    prompt: `Product photo of a ${furnitureName}, ${style} style, ${color} color. Pure white background, studio lighting, high quality furniture photography, no shadows, isolated product shot.`,
-    n: 1,
-    size: '1024x1024',
-    quality: 'standard',
-  });
-  return response.data[0].url;
 }

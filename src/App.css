@@ -817,3 +817,109 @@
   color: var(--blue);
   font-weight: 600;
 }
+
+/* ===== API KEY MODAL ===== */
+.apikey-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 200;
+}
+
+.apikey-modal {
+  background: #fff;
+  border-radius: 16px;
+  padding: 36px 32px;
+  width: 420px;
+  max-width: 95vw;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  box-shadow: 0 24px 48px rgba(0,0,0,0.2);
+}
+
+.apikey-logo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.apikey-brand {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--black);
+}
+
+.apikey-title {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--black);
+  margin-top: 4px;
+}
+
+.apikey-desc {
+  font-size: 13px;
+  color: var(--gray-500);
+  line-height: 1.6;
+}
+
+.apikey-input {
+  width: 100%;
+  padding: 12px 14px;
+  border: 1.5px solid var(--gray-300);
+  border-radius: 8px;
+  font-size: 14px;
+  font-family: var(--font);
+  color: var(--black);
+  outline: none;
+  transition: border-color 0.15s;
+}
+.apikey-input:focus { border-color: var(--blue); }
+
+.apikey-error {
+  font-size: 12px;
+  color: #dc2626;
+  margin-top: -6px;
+}
+
+.apikey-btn {
+  width: 100%;
+  padding: 13px;
+  background: var(--black);
+  color: #fff;
+  border-radius: 10px;
+  font-size: 15px;
+  font-weight: 600;
+  transition: background 0.15s;
+}
+.apikey-btn:hover:not(:disabled) { background: var(--gray-800); }
+.apikey-btn:disabled { background: var(--gray-300); cursor: not-allowed; }
+
+.apikey-hint {
+  font-size: 12px;
+  color: var(--gray-400);
+  text-align: center;
+}
+.apikey-hint a { color: var(--blue); text-decoration: none; }
+.apikey-hint a:hover { text-decoration: underline; }
+
+.apikey-settings-btn {
+  position: fixed;
+  bottom: 20px;
+  left: calc(var(--sidebar-w) + 16px);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 12px;
+  background: var(--gray-100);
+  border: 1px solid var(--gray-200);
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--gray-500);
+  z-index: 50;
+  transition: background 0.15s;
+}
+.apikey-settings-btn:hover { background: var(--gray-200); color: var(--gray-700); }

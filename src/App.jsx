@@ -7,7 +7,7 @@ import ReplacementPanel from './components/ReplacementPanel';
 import UploadZone from './components/UploadZone';
 import ReplacementHistory from './components/ReplacementHistory';
 import ApiKeyModal from './components/ApiKeyModal';
-import { detectObjects, replaceObjectInImage, getStoredApiKey, isDemoMode } from './services/openai';
+import { detectObjects, replaceObjectInImage, getStoredApiKey } from './services/openai';
 import { generateThumbnails } from './utils/cropThumbnail';
 import './App.css';
 
@@ -22,23 +22,22 @@ export default function App() {
   const [isReplacing, setIsReplacing] = useState(false);
   const [history, setHistory] = useState([]);
   const [replacementLog, setReplacementLog] = useState([]);
-  const [projectTitle] = useState('Hallway Interior');
+  const [projectTitle] = useState('Interior Design');
   const [sidebarActive, setSidebarActive] = useState('Objects');
   const [showHistory, setShowHistory] = useState(false);
   const [error, setError] = useState(null);
-  const [showApiKeyModal, setShowApiKeyModal] = useState(!getStoredApiKey() && !isDemoMode());
+  const [showApiKeyModal, setShowApiKeyModal] = useState(!getStoredApiKey());
 
   const runDetection = useCallback(async (imageData) => {
     setDetecting(true);
     setError(null);
     try {
       const raw = await detectObjects(imageData);
-      // Crop real thumbnails from the uploaded image for each detected object
       const withThumbs = await generateThumbnails(imageData, raw);
       setDetectedObjects(withThumbs);
     } catch (e) {
       console.error('Detection failed:', e);
-      setError('Detection failed: ' + e.message);
+      setError(e.message);
       setDetectedObjects([]);
     } finally {
       setDetecting(false);
@@ -78,7 +77,6 @@ export default function App() {
 
     setIsReplacing(true);
     setError(null);
-
     setHistory((prev) => [...prev, { image: currentImage, objects: detectedObjects }]);
 
     try {
@@ -91,7 +89,6 @@ export default function App() {
         style: suggestion.style,
         timestamp: new Date().toLocaleTimeString(),
       }]);
-
       setDetectedObjects((prev) =>
         prev.map((o) =>
           o.id === selectedObject.id
@@ -99,7 +96,6 @@ export default function App() {
             : o
         )
       );
-
       setShowReplacePanel(false);
       setSelectedObject(null);
     } catch (e) {
@@ -131,14 +127,10 @@ export default function App() {
     });
   }, []);
 
-  const handleApiKeySaved = useCallback(() => {
-    setShowApiKeyModal(false);
-  }, []);
-
   if (showApiKeyModal) {
     return (
       <div className="app">
-        <ApiKeyModal onSaved={handleApiKeySaved} />
+        <ApiKeyModal onSaved={() => setShowApiKeyModal(false)} />
       </div>
     );
   }
@@ -170,13 +162,6 @@ export default function App() {
           detecting={detecting}
         />
 
-        {isDemoMode() && (
-          <div className="demo-banner">
-            🎮 <strong>Demo Mode</strong> — detection uses mock data; replacements are simulated.
-            <button onClick={() => setShowApiKeyModal(true)}>Add API Key</button>
-          </div>
-        )}
-
         {error && (
           <div className="error-banner" onClick={() => setError(null)}>
             ⚠️ {error} <span className="error-dismiss">(click to dismiss)</span>
@@ -197,7 +182,7 @@ export default function App() {
           {detecting && (
             <div className="detecting-overlay">
               <div className="spinner" />
-              <span>Detecting objects…</span>
+              <span>Analyzing image with GPT-4o…</span>
             </div>
           )}
           <Canvas
@@ -241,7 +226,7 @@ export default function App() {
       )}
 
       {showApiKeyModal && (
-        <ApiKeyModal onSaved={handleApiKeySaved} />
+        <ApiKeyModal onSaved={() => setShowApiKeyModal(false)} />
       )}
     </div>
   );

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { saveApiKey, enableDemoMode } from '../services/openai';
+import { saveApiKey } from '../services/openai';
 
 export default function ApiKeyModal({ onSaved }) {
   const [key, setKey] = useState('');
@@ -15,11 +15,6 @@ export default function ApiKeyModal({ onSaved }) {
     onSaved();
   };
 
-  const handleDemo = () => {
-    enableDemoMode();
-    onSaved();
-  };
-
   return (
     <div className="apikey-backdrop">
       <div className="apikey-modal">
@@ -32,9 +27,9 @@ export default function ApiKeyModal({ onSaved }) {
           <span className="apikey-brand">BIM Design AI</span>
         </div>
 
-        <h2 className="apikey-title">OpenAI API Key</h2>
+        <h2 className="apikey-title">Enter your OpenAI API Key</h2>
         <p className="apikey-desc">
-          Your key is stored only in your browser's localStorage — never sent to any server other than OpenAI directly.
+          Your key is stored only in your browser's localStorage and sent directly to OpenAI — never to any other server.
         </p>
 
         <input
@@ -50,15 +45,7 @@ export default function ApiKeyModal({ onSaved }) {
         {error && <p className="apikey-error">{error}</p>}
 
         <button className="apikey-btn" onClick={handleSave} disabled={!key.trim()}>
-          Save & Continue
-        </button>
-
-        <div className="apikey-divider"><span>or</span></div>
-
-        <button className="apikey-demo-btn" onClick={handleDemo}>
-          <span>🎮</span>
-          Try Demo Mode
-          <span className="apikey-demo-badge">No API key needed</span>
+          Save & Start
         </button>
 
         <p className="apikey-hint">
@@ -66,6 +53,7 @@ export default function ApiKeyModal({ onSaved }) {
           <a href="https://platform.openai.com/api-keys" target="_blank" rel="noreferrer">
             platform.openai.com/api-keys
           </a>
+          {' '}— requires GPT-4o access and billing enabled.
         </p>
       </div>
     </div>

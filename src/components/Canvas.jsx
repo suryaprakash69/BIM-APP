@@ -19,13 +19,15 @@ export default function Canvas({ image, detectedObjects, selectedObject, onSelec
       });
     };
 
-    const observer = new ResizeObserver(updateDims);
-    if (containerRef.current) observer.observe(containerRef.current);
-    if (imgRef.current) {
-      imgRef.current.addEventListener('load', updateDims);
-    }
+    const ro = new ResizeObserver(updateDims);
+    if (containerRef.current) ro.observe(containerRef.current);
+    const img = imgRef.current;
+    if (img) img.addEventListener('load', updateDims);
     updateDims();
-    return () => observer.disconnect();
+    return () => {
+      ro.disconnect();
+      if (img) img.removeEventListener('load', updateDims);
+    };
   }, [image]);
 
   const getBBoxStyle = (bbox) => ({
@@ -42,7 +44,7 @@ export default function Canvas({ image, detectedObjects, selectedObject, onSelec
           <img
             ref={imgRef}
             src={image}
-            alt="Room"
+            alt="Room interior"
             className="canvas-image"
             draggable={false}
           />
@@ -50,7 +52,7 @@ export default function Canvas({ image, detectedObjects, selectedObject, onSelec
           {isReplacing && (
             <div className="canvas-overlay-loading">
               <div className="canvas-spinner-wrap">
-                <div className="spinner" />
+                <div className="spinner large" />
                 <p>Applying replacement…</p>
                 <p className="spinner-sub">AI is blending the new furniture into your scene</p>
               </div>
@@ -59,15 +61,16 @@ export default function Canvas({ image, detectedObjects, selectedObject, onSelec
 
           {replaceMode && detectedObjects.map((obj) => {
             if (!obj.bbox) return null;
+            // Skip full-image bboxes like Wall Panel
+            if (obj.bbox.width > 0.9 && obj.bbox.height > 0.9) return null;
             const isSelected = selectedObject?.id === obj.id;
-            const style = getBBoxStyle(obj.bbox);
             return (
               <div
                 key={obj.id}
                 className={`bbox${isSelected ? ' bbox-selected' : ''}`}
-                style={style}
+                style={getBBoxStyle(obj.bbox)}
                 onClick={() => onSelectObject(obj)}
-                title={`Click to replace: ${obj.name}`}
+                title={`Replace: ${obj.name}`}
               >
                 <span className="bbox-label">{obj.name}</span>
                 {isSelected && (
@@ -88,7 +91,7 @@ export default function Canvas({ image, detectedObjects, selectedObject, onSelec
         </>
       ) : (
         <div className="canvas-empty">
-          <svg viewBox="0 0 24 24" fill="none" stroke="#ccc" strokeWidth={1.5} width={64} height={64}>
+          <svg viewBox="0 0 24 24" fill="none" stroke="#555" strokeWidth={1.5} width={64} height={64}>
             <rect x="3" y="3" width="18" height="18" rx="2" />
             <circle cx="8.5" cy="8.5" r="1.5" />
             <polyline points="21 15 16 10 5 21" />

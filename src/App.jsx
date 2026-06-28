@@ -8,6 +8,7 @@ import UploadZone from './components/UploadZone';
 import ReplacementHistory from './components/ReplacementHistory';
 import ApiKeyModal from './components/ApiKeyModal';
 import { detectObjects, replaceObjectInImage, getStoredApiKey, isDemoMode } from './services/openai';
+import { generateThumbnails } from './utils/cropThumbnail';
 import './App.css';
 
 export default function App() {
@@ -26,17 +27,18 @@ export default function App() {
   const [showHistory, setShowHistory] = useState(false);
   const [error, setError] = useState(null);
   const [showApiKeyModal, setShowApiKeyModal] = useState(!getStoredApiKey() && !isDemoMode());
-  const [demoActive, setDemoActive] = useState(isDemoMode);
 
   const runDetection = useCallback(async (imageData) => {
     setDetecting(true);
     setError(null);
     try {
-      const objects = await detectObjects(imageData);
-      setDetectedObjects(objects);
+      const raw = await detectObjects(imageData);
+      // Crop real thumbnails from the uploaded image for each detected object
+      const withThumbs = await generateThumbnails(imageData, raw);
+      setDetectedObjects(withThumbs);
     } catch (e) {
       console.error('Detection failed:', e);
-      setError('Object detection failed: ' + e.message);
+      setError('Detection failed: ' + e.message);
       setDetectedObjects([]);
     } finally {
       setDetecting(false);
@@ -77,18 +79,10 @@ export default function App() {
     setIsReplacing(true);
     setError(null);
 
-    setHistory((prev) => [...prev, {
-      image: currentImage,
-      objects: detectedObjects,
-    }]);
+    setHistory((prev) => [...prev, { image: currentImage, objects: detectedObjects }]);
 
     try {
-      const newImage = await replaceObjectInImage(
-        currentImage,
-        selectedObject,
-        suggestion.name,
-        suggestion.style
-      );
+      const newImage = await replaceObjectInImage(currentImage, selectedObject, suggestion.name, suggestion.style);
 
       setCurrentImage(newImage);
       setReplacementLog((prev) => [...prev, {
@@ -132,18 +126,19 @@ export default function App() {
 
   const handleToggleReplaceMode = useCallback(() => {
     setReplaceMode((v) => {
-      if (v) {
-        setSelectedObject(null);
-        setShowReplacePanel(false);
-      }
+      if (v) { setSelectedObject(null); setShowReplacePanel(false); }
       return !v;
     });
+  }, []);
+
+  const handleApiKeySaved = useCallback(() => {
+    setShowApiKeyModal(false);
   }, []);
 
   if (showApiKeyModal) {
     return (
       <div className="app">
-        <ApiKeyModal onSaved={() => { setShowApiKeyModal(false); setDemoActive(isDemoMode()); }} />
+        <ApiKeyModal onSaved={handleApiKeySaved} />
       </div>
     );
   }
@@ -163,9 +158,10 @@ export default function App() {
         onSelect={setSidebarActive}
         onUndo={handleUndo}
         canUndo={history.length > 0}
+        onApiKey={() => setShowApiKeyModal(true)}
       />
 
-      <div className={`main-area${showReplacePanel ? ' panel-open' : ''}`}>
+      <div className="main-area">
         <TopBar
           title={projectTitle}
           onDetectAgain={handleDetectAgain}
@@ -176,7 +172,7 @@ export default function App() {
 
         {isDemoMode() && (
           <div className="demo-banner">
-            🎮 <strong>Demo Mode</strong> — Object detection uses mock data; replacements are simulated.
+            🎮 <strong>Demo Mode</strong> — detection uses mock data; replacements are simulated.
             <button onClick={() => setShowApiKeyModal(true)}>Add API Key</button>
           </div>
         )}
@@ -197,21 +193,22 @@ export default function App() {
           </div>
         )}
 
-        {detecting && detectedObjects.length === 0 && (
-          <div className="detecting-overlay">
-            <div className="spinner" />
-            <span>Detecting objects…</span>
-          </div>
-        )}
-
-        <Canvas
-          image={currentImage}
-          detectedObjects={detectedObjects}
-          selectedObject={selectedObject}
-          onSelectObject={handleSelectObject}
-          replaceMode={replaceMode}
-          isReplacing={isReplacing}
-        />
+        <div className="canvas-area">
+          {detecting && (
+            <div className="detecting-overlay">
+              <div className="spinner" />
+              <span>Detecting objects…</span>
+            </div>
+          )}
+          <Canvas
+            image={currentImage}
+            detectedObjects={detectedObjects}
+            selectedObject={selectedObject}
+            onSelectObject={handleSelectObject}
+            replaceMode={replaceMode}
+            isReplacing={isReplacing}
+          />
+        </div>
 
         <DetectedObjectsBar
           objects={detectedObjects}
@@ -221,14 +218,10 @@ export default function App() {
             if (!replaceMode) setReplaceMode(true);
             setShowReplacePanel(true);
           }}
-          originalImage={currentImage}
         />
 
         {replacementLog.length > 0 && (
-          <button
-            className="history-toggle"
-            onClick={() => setShowHistory((v) => !v)}
-          >
+          <button className="history-toggle" onClick={() => setShowHistory((v) => !v)}>
             📋 Replacement History ({replacementLog.length})
           </button>
         )}
@@ -244,23 +237,12 @@ export default function App() {
       )}
 
       {showHistory && (
-        <ReplacementHistory
-          history={replacementLog}
-          onClose={() => setShowHistory(false)}
-        />
+        <ReplacementHistory history={replacementLog} onClose={() => setShowHistory(false)} />
       )}
 
       {showApiKeyModal && (
-        <ApiKeyModal onSaved={() => { setShowApiKeyModal(false); setDemoActive(isDemoMode()); }} />
+        <ApiKeyModal onSaved={handleApiKeySaved} />
       )}
-
-      <button
-        className="apikey-settings-btn"
-        onClick={() => setShowApiKeyModal(true)}
-        title="Change OpenAI API Key"
-      >
-        🔑 API Key
-      </button>
     </div>
   );
 }

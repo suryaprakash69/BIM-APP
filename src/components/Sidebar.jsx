@@ -35,9 +35,15 @@ const icons = {
       <polyline points="7 3 3 7 7 11" />
     </svg>
   ),
+  Key: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+      <circle cx="7.5" cy="15.5" r="5.5" />
+      <path d="M21 2l-9.6 9.6M15.5 7.5l3 3" />
+    </svg>
+  ),
 };
 
-export default function Sidebar({ active, onSelect, onUndo, canUndo }) {
+export default function Sidebar({ active, onSelect, onUndo, canUndo, onApiKey }) {
   const navItems = ['Objects', 'Materials', 'Textures', 'Lighting', 'AI Suggest'];
 
   return (
@@ -53,7 +59,9 @@ export default function Sidebar({ active, onSelect, onUndo, canUndo }) {
           <span className="sidebar-label">{item}</span>
         </button>
       ))}
+
       <div className="sidebar-spacer" />
+
       <button
         className={`sidebar-btn${!canUndo ? ' disabled' : ''}`}
         onClick={onUndo}
@@ -62,6 +70,11 @@ export default function Sidebar({ active, onSelect, onUndo, canUndo }) {
       >
         <span className="sidebar-icon">{icons.Undo}</span>
         <span className="sidebar-label">Undo</span>
+      </button>
+
+      <button className="sidebar-btn" onClick={onApiKey} title="API Key Settings">
+        <span className="sidebar-icon">{icons.Key}</span>
+        <span className="sidebar-label">API Key</span>
       </button>
     </aside>
   );

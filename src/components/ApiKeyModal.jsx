@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { saveApiKey } from '../services/openai';
+import { saveApiKey, enableDemoMode } from '../services/openai';
 
 export default function ApiKeyModal({ onSaved }) {
   const [key, setKey] = useState('');
@@ -8,10 +8,15 @@ export default function ApiKeyModal({ onSaved }) {
   const handleSave = () => {
     const trimmed = key.trim();
     if (!trimmed.startsWith('sk-')) {
-      setError('Key must start with sk-');
+      setError('Key must start with "sk-"');
       return;
     }
     saveApiKey(trimmed);
+    onSaved();
+  };
+
+  const handleDemo = () => {
+    enableDemoMode();
     onSaved();
   };
 
@@ -27,9 +32,9 @@ export default function ApiKeyModal({ onSaved }) {
           <span className="apikey-brand">BIM Design AI</span>
         </div>
 
-        <h2 className="apikey-title">Enter your OpenAI API Key</h2>
+        <h2 className="apikey-title">OpenAI API Key</h2>
         <p className="apikey-desc">
-          Your key is stored only in your browser's localStorage and is never sent to any server other than OpenAI.
+          Your key is stored only in your browser's localStorage — never sent to any server other than OpenAI directly.
         </p>
 
         <input
@@ -44,16 +49,20 @@ export default function ApiKeyModal({ onSaved }) {
 
         {error && <p className="apikey-error">{error}</p>}
 
-        <button
-          className="apikey-btn"
-          onClick={handleSave}
-          disabled={!key.trim()}
-        >
+        <button className="apikey-btn" onClick={handleSave} disabled={!key.trim()}>
           Save & Continue
         </button>
 
+        <div className="apikey-divider"><span>or</span></div>
+
+        <button className="apikey-demo-btn" onClick={handleDemo}>
+          <span>🎮</span>
+          Try Demo Mode
+          <span className="apikey-demo-badge">No API key needed</span>
+        </button>
+
         <p className="apikey-hint">
-          Get your key at{' '}
+          Get a key at{' '}
           <a href="https://platform.openai.com/api-keys" target="_blank" rel="noreferrer">
             platform.openai.com/api-keys
           </a>

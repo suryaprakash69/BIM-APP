@@ -7,7 +7,7 @@ import ReplacementPanel from './components/ReplacementPanel';
 import UploadZone from './components/UploadZone';
 import ReplacementHistory from './components/ReplacementHistory';
 import ApiKeyModal from './components/ApiKeyModal';
-import { detectObjects, replaceObjectInImage, getStoredApiKey } from './services/openai';
+import { detectObjects, replaceObjectInImage, getStoredApiKey, isDemoMode } from './services/openai';
 import './App.css';
 
 export default function App() {
@@ -25,7 +25,8 @@ export default function App() {
   const [sidebarActive, setSidebarActive] = useState('Objects');
   const [showHistory, setShowHistory] = useState(false);
   const [error, setError] = useState(null);
-  const [showApiKeyModal, setShowApiKeyModal] = useState(!getStoredApiKey());
+  const [showApiKeyModal, setShowApiKeyModal] = useState(!getStoredApiKey() && !isDemoMode());
+  const [demoActive, setDemoActive] = useState(isDemoMode);
 
   const runDetection = useCallback(async (imageData) => {
     setDetecting(true);
@@ -142,7 +143,7 @@ export default function App() {
   if (showApiKeyModal) {
     return (
       <div className="app">
-        <ApiKeyModal onSaved={() => setShowApiKeyModal(false)} />
+        <ApiKeyModal onSaved={() => { setShowApiKeyModal(false); setDemoActive(isDemoMode()); }} />
       </div>
     );
   }
@@ -172,6 +173,13 @@ export default function App() {
           onToggleReplaceMode={handleToggleReplaceMode}
           detecting={detecting}
         />
+
+        {isDemoMode() && (
+          <div className="demo-banner">
+            🎮 <strong>Demo Mode</strong> — Object detection uses mock data; replacements are simulated.
+            <button onClick={() => setShowApiKeyModal(true)}>Add API Key</button>
+          </div>
+        )}
 
         {error && (
           <div className="error-banner" onClick={() => setError(null)}>
@@ -243,7 +251,7 @@ export default function App() {
       )}
 
       {showApiKeyModal && (
-        <ApiKeyModal onSaved={() => setShowApiKeyModal(false)} />
+        <ApiKeyModal onSaved={() => { setShowApiKeyModal(false); setDemoActive(isDemoMode()); }} />
       )}
 
       <button

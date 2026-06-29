@@ -16,6 +16,31 @@ function makeClient() {
   return new OpenAI({ apiKey: key, dangerouslyAllowBrowser: true });
 }
 
+// ─── Retry with backoff on 429 ─────────────────────────────────────────────
+
+async function withRetry(fn, maxAttempts = 5) {
+  const delays = [5000, 10000, 20000, 30000, 60000];
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      const is429 =
+        err?.status === 429 ||
+        err?.message?.includes('429') ||
+        err?.message?.toLowerCase().includes('rate limit') ||
+        err?.message?.toLowerCase().includes('too many requests');
+
+      if (is429 && attempt < maxAttempts - 1) {
+        const wait = delays[attempt];
+        console.warn(`Rate limited (429). Retrying in ${wait / 1000}s… (attempt ${attempt + 1}/${maxAttempts})`);
+        await new Promise((r) => setTimeout(r, wait));
+        continue;
+      }
+      throw err;
+    }
+  }
+}
+
 // ─── Object Detection ──────────────────────────────────────────────────────
 
 export async function detectObjects(imageBase64) {
@@ -23,19 +48,20 @@ export async function detectObjects(imageBase64) {
   const base64Data = imageBase64.includes(',') ? imageBase64.split(',')[1] : imageBase64;
   const mimeType = imageBase64.startsWith('data:image/png') ? 'image/png' : 'image/jpeg';
 
-  const response = await client.chat.completions.create({
-    model: 'gpt-4o',
-    messages: [
-      {
-        role: 'user',
-        content: [
-          {
-            type: 'image_url',
-            image_url: { url: `data:${mimeType};base64,${base64Data}`, detail: 'high' },
-          },
-          {
-            type: 'text',
-            text: `You are an expert interior design object detector. Analyze this room image carefully and detect ALL visible furniture and decorative objects.
+  const response = await withRetry(() =>
+    client.chat.completions.create({
+      model: 'gpt-4o',
+      messages: [
+        {
+          role: 'user',
+          content: [
+            {
+              type: 'image_url',
+              image_url: { url: `data:${mimeType};base64,${base64Data}`, detail: 'high' },
+            },
+            {
+              type: 'text',
+              text: `You are an expert interior design object detector. Analyze this room image carefully and detect ALL visible furniture and decorative objects.
 
 Return ONLY a valid JSON array — no markdown, no explanation, no extra text:
 [
@@ -58,12 +84,13 @@ Rules:
 - Give each distinct physical object (or identical group) its own entry
 - category must be one of: Chair, Sofa, Table, Console Table, Coffee Table, Dining Table, Bed, Wardrobe, Cabinet, TV Unit, Bookshelf, Desk, Stool, Bench, Rug, Carpet, Curtains, Window, Door, Wall Panel, Ceiling Light, Pendant Light, Chandelier, Floor Lamp, Plant, Vase, Mirror, Artwork, Clock, Flower Vase, Other
 - Return ONLY the JSON array`,
-          },
-        ],
-      },
-    ],
-    max_tokens: 2000,
-  });
+            },
+          ],
+        },
+      ],
+      max_tokens: 2000,
+    })
+  );
 
   const text = response.choices[0].message.content.trim();
   const cleaned = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
@@ -81,48 +108,59 @@ Keep everything else completely identical: room layout, perspective, camera angl
 Blend the new piece naturally with photorealistic lighting and shadows that match the scene.
 Make the result look seamless and photorealistic.`;
 
-  // 1. Try DALL-E 2 inpainting with bounding-box mask
+  // 1. Try DALL-E 2 inpainting with bounding-box mask (with retry)
   try {
     const squareImage = await makeSquarePng(imageBase64);
     const maskBase64 = await createMask(imageBase64, objectInfo.bbox);
-
     const imageBlob = base64ToBlob(squareImage, 'image/png');
     const maskBlob = base64ToBlob(maskBase64, 'image/png');
 
-    const formData = new FormData();
-    formData.append('image', imageBlob, 'image.png');
-    formData.append('mask', maskBlob, 'mask.png');
-    formData.append('prompt', prompt);
-    formData.append('n', '1');
-    formData.append('size', '1024x1024');
-    formData.append('response_format', 'b64_json');
+    const result = await withRetry(async () => {
+      const formData = new FormData();
+      formData.append('image', imageBlob, 'image.png');
+      formData.append('mask', maskBlob, 'mask.png');
+      formData.append('prompt', prompt);
+      formData.append('n', '1');
+      formData.append('size', '1024x1024');
+      formData.append('response_format', 'b64_json');
 
-    const res = await fetch('https://api.openai.com/v1/images/edits', {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${apiKey}` },
-      body: formData,
+      const res = await fetch('https://api.openai.com/v1/images/edits', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${apiKey}` },
+        body: formData,
+      });
+
+      if (res.status === 429) {
+        const err = new Error('429 Too Many Requests');
+        err.status = 429;
+        throw err;
+      }
+
+      if (res.ok) {
+        const data = await res.json();
+        return `data:image/png;base64,${data.data[0].b64_json}`;
+      }
+
+      const errBody = await res.json().catch(() => ({}));
+      throw new Error(errBody.error?.message || `HTTP ${res.status}`);
     });
 
-    if (res.ok) {
-      const data = await res.json();
-      return `data:image/png;base64,${data.data[0].b64_json}`;
-    }
-
-    const errBody = await res.json().catch(() => ({}));
-    console.warn('DALL-E 2 edit failed:', errBody.error?.message);
+    return result;
   } catch (e) {
     console.warn('DALL-E 2 inpainting failed:', e.message);
   }
 
-  // 2. Fallback: gpt-image-1 instruction-based editing
+  // 2. Fallback: gpt-image-1 instruction-based editing (with retry)
   const client = makeClient();
-  const response = await client.images.edit({
-    model: 'gpt-image-1',
-    image: await base64ToFile(base64Data, 'room.png', 'image/png'),
-    prompt: `Replace only the ${objectInfo.category} (currently: ${objectInfo.name}) with a ${replacementName} in ${replacementStyle} style. Keep the entire rest of the room — perspective, lighting, floor, walls, ceiling, every other piece of furniture — exactly the same. Make it photorealistic.`,
-    n: 1,
-    size: '1024x1024',
-  });
+  const response = await withRetry(() =>
+    client.images.edit({
+      model: 'gpt-image-1',
+      image: base64ToFile(base64Data, 'room.png', 'image/png'),
+      prompt: `Replace only the ${objectInfo.category} (currently: ${objectInfo.name}) with a ${replacementName} in ${replacementStyle} style. Keep the entire rest of the room — perspective, lighting, floor, walls, ceiling, every other piece of furniture — exactly the same. Make it photorealistic.`,
+      n: 1,
+      size: '1024x1024',
+    })
+  );
 
   const imgData = response.data[0];
   if (imgData.b64_json) return `data:image/png;base64,${imgData.b64_json}`;
@@ -179,6 +217,6 @@ function base64ToBlob(base64, mimeType) {
   return new Blob([bytes], { type: mimeType });
 }
 
-async function base64ToFile(base64, filename, mimeType) {
+function base64ToFile(base64, filename, mimeType) {
   return new File([base64ToBlob(base64, mimeType)], filename, { type: mimeType });
 }

@@ -37,7 +37,10 @@ export default function App() {
       setDetectedObjects(withThumbs);
     } catch (e) {
       console.error('Detection failed:', e);
-      setError(e.message);
+      const msg = e.message?.toLowerCase().includes('rate limit') || e.message?.includes('429')
+        ? 'OpenAI rate limit hit. Please wait a minute and try Detect Again.'
+        : e.message;
+      setError(msg);
       setDetectedObjects([]);
     } finally {
       setDetecting(false);
@@ -100,7 +103,10 @@ export default function App() {
       setSelectedObject(null);
     } catch (e) {
       console.error('Replacement failed:', e);
-      setError('Replacement failed: ' + e.message);
+      const msg = e.message?.toLowerCase().includes('rate limit') || e.message?.includes('429')
+        ? 'OpenAI rate limit hit. Please wait a moment and try again.'
+        : 'Replacement failed: ' + e.message;
+      setError(msg);
       setHistory((prev) => prev.slice(0, -1));
     } finally {
       setIsReplacing(false);

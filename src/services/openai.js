@@ -1,5 +1,3 @@
-import OpenAI from 'openai';
-
 const LS_KEY = 'bim_openai_key';
 
 export function getStoredApiKey() {
@@ -10,10 +8,10 @@ export function saveApiKey(key) {
   localStorage.setItem(LS_KEY, key.trim());
 }
 
-function makeClient() {
+function getApiKey() {
   const key = getStoredApiKey();
   if (!key) throw new Error('No API key. Please enter your OpenAI API key.');
-  return new OpenAI({ apiKey: key, dangerouslyAllowBrowser: true });
+  return key;
 }
 
 // ─── Retry with backoff on 429 ─────────────────────────────────────────────
@@ -44,24 +42,24 @@ async function withRetry(fn, maxAttempts = 5) {
 // ─── Object Detection ──────────────────────────────────────────────────────
 
 export async function detectObjects(imageBase64) {
-  const client = makeClient();
+  const apiKey = getApiKey();
   const base64Data = imageBase64.includes(',') ? imageBase64.split(',')[1] : imageBase64;
   const mimeType = imageBase64.startsWith('data:image/png') ? 'image/png' : 'image/jpeg';
 
-  const response = await withRetry(() =>
-    client.chat.completions.create({
-      model: 'gpt-4o',
-      messages: [
-        {
-          role: 'user',
-          content: [
-            {
-              type: 'image_url',
-              image_url: { url: `data:${mimeType};base64,${base64Data}`, detail: 'high' },
-            },
-            {
-              type: 'text',
-              text: `You are an expert interior design object detector. Analyze this room image carefully and detect ALL visible furniture and decorative objects.
+  const body = {
+    model: 'gpt-4o',
+    input: [
+      {
+        role: 'user',
+        content: [
+          {
+            type: 'input_image',
+            image_url: `data:${mimeType};base64,${base64Data}`,
+            detail: 'high',
+          },
+          {
+            type: 'input_text',
+            text: `You are an expert interior design object detector. Analyze this room image carefully and detect ALL visible furniture and decorative objects.
 
 Return ONLY a valid JSON array — no markdown, no explanation, no extra text:
 [
@@ -84,23 +82,51 @@ Rules:
 - Give each distinct physical object (or identical group) its own entry
 - category must be one of: Chair, Sofa, Table, Console Table, Coffee Table, Dining Table, Bed, Wardrobe, Cabinet, TV Unit, Bookshelf, Desk, Stool, Bench, Rug, Carpet, Curtains, Window, Door, Wall Panel, Ceiling Light, Pendant Light, Chandelier, Floor Lamp, Plant, Vase, Mirror, Artwork, Clock, Flower Vase, Other
 - Return ONLY the JSON array`,
-            },
-          ],
-        },
-      ],
-      max_tokens: 2000,
-    })
-  );
+          },
+        ],
+      },
+    ],
+    max_output_tokens: 2000,
+  };
 
-  const text = response.choices[0].message.content.trim();
-  const cleaned = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+  const response = await withRetry(async () => {
+    const res = await fetch('https://api.openai.com/v1/responses', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(body),
+    });
+
+    if (res.status === 429) {
+      const err = new Error('429 Too Many Requests');
+      err.status = 429;
+      throw err;
+    }
+
+    if (!res.ok) {
+      const errBody = await res.json().catch(() => ({}));
+      throw new Error(errBody.error?.message || `HTTP ${res.status}`);
+    }
+
+    return res.json();
+  });
+
+  // Responses API: output is an array of content blocks
+  const outputText = response.output
+    ?.find((o) => o.type === 'message')
+    ?.content?.find((c) => c.type === 'output_text')
+    ?.text || '';
+
+  const cleaned = outputText.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
   return JSON.parse(cleaned);
 }
 
 // ─── Object Replacement ────────────────────────────────────────────────────
 
 export async function replaceObjectInImage(imageBase64, objectInfo, replacementName, replacementStyle) {
-  const apiKey = getStoredApiKey();
+  const apiKey = getApiKey();
   const base64Data = imageBase64.includes(',') ? imageBase64.split(',')[1] : imageBase64;
 
   const prompt = `Replace only the ${objectInfo.name} with a ${replacementName} in ${replacementStyle} style.
@@ -150,19 +176,26 @@ Make the result look seamless and photorealistic.`;
     console.warn('DALL-E 2 inpainting failed:', e.message);
   }
 
-  // 2. Fallback: gpt-image-1 instruction-based editing (with retry)
-  const client = makeClient();
-  const response = await withRetry(() =>
-    client.images.edit({
-      model: 'gpt-image-1',
-      image: base64ToFile(base64Data, 'room.png', 'image/png'),
-      prompt: `Replace only the ${objectInfo.category} (currently: ${objectInfo.name}) with a ${replacementName} in ${replacementStyle} style. Keep the entire rest of the room — perspective, lighting, floor, walls, ceiling, every other piece of furniture — exactly the same. Make it photorealistic.`,
-      n: 1,
-      size: '1024x1024',
-    })
-  );
+  // 2. Fallback: gpt-image-1 via /v1/images/edits (with retry)
+  const fallbackForm = new FormData();
+  fallbackForm.append('image', base64ToFile(base64Data, 'room.png', 'image/png'), 'room.png');
+  fallbackForm.append('prompt', `Replace only the ${objectInfo.category} (currently: ${objectInfo.name}) with a ${replacementName} in ${replacementStyle} style. Keep the entire rest of the room — perspective, lighting, floor, walls, ceiling, every other piece of furniture — exactly the same. Make it photorealistic.`);
+  fallbackForm.append('model', 'gpt-image-1');
+  fallbackForm.append('n', '1');
+  fallbackForm.append('size', '1024x1024');
 
-  const imgData = response.data[0];
+  const fallbackRes = await withRetry(async () => {
+    const res = await fetch('https://api.openai.com/v1/images/edits', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${apiKey}` },
+      body: fallbackForm,
+    });
+    if (res.status === 429) { const e = new Error('429'); e.status = 429; throw e; }
+    if (!res.ok) { const b = await res.json().catch(() => ({})); throw new Error(b.error?.message || `HTTP ${res.status}`); }
+    return res.json();
+  });
+
+  const imgData = fallbackRes.data[0];
   if (imgData.b64_json) return `data:image/png;base64,${imgData.b64_json}`;
   return imgData.url;
 }

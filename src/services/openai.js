@@ -1,9 +1,11 @@
 import OpenAI from 'openai';
 
 const LS_KEY = 'bim_openai_key';
+// Key baked in at build time via .env (VITE_OPENAI_API_KEY); localStorage overrides for runtime changes
+const ENV_KEY = import.meta.env.VITE_OPENAI_API_KEY || '';
 
 export function getStoredApiKey() {
-  return localStorage.getItem(LS_KEY) || '';
+  return localStorage.getItem(LS_KEY) || ENV_KEY;
 }
 
 export function saveApiKey(key) {

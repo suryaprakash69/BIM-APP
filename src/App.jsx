@@ -26,7 +26,7 @@ export default function App() {
   const [sidebarActive, setSidebarActive] = useState('Objects');
   const [showHistory, setShowHistory] = useState(false);
   const [error, setError] = useState(null);
-  const [showApiKeyModal, setShowApiKeyModal] = useState(!getStoredApiKey());
+  const [showApiKeyModal, setShowApiKeyModal] = useState(false); // env key used; open via sidebar if needed
 
   const runDetection = useCallback(async (imageData) => {
     setDetecting(true);

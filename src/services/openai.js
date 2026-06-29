@@ -1,11 +1,9 @@
 import OpenAI from 'openai';
 
 const LS_KEY = 'bim_openai_key';
-// Key baked in at build time via .env (VITE_OPENAI_API_KEY); localStorage overrides for runtime changes
-const ENV_KEY = import.meta.env.VITE_OPENAI_API_KEY || '';
 
 export function getStoredApiKey() {
-  return localStorage.getItem(LS_KEY) || ENV_KEY;
+  return localStorage.getItem(LS_KEY) || import.meta.env.VITE_OPENAI_API_KEY || '';
 }
 
 export function saveApiKey(key) {
@@ -142,10 +140,7 @@ async function makeSquarePng(imageBase64) {
       canvas.width = size;
       canvas.height = size;
       const ctx = canvas.getContext('2d');
-      // centre the image on the square canvas, transparent padding
-      const ox = (size - img.width) / 2;
-      const oy = (size - img.height) / 2;
-      ctx.drawImage(img, ox, oy);
+      ctx.drawImage(img, (size - img.width) / 2, (size - img.height) / 2);
       resolve(canvas.toDataURL('image/png').split(',')[1]);
     };
     img.src = imageBase64;
@@ -161,11 +156,8 @@ async function createMask(imageBase64, bbox) {
       canvas.width = size;
       canvas.height = size;
       const ctx = canvas.getContext('2d');
-
-      // Black = keep, transparent = edit
       ctx.fillStyle = 'rgba(0,0,0,255)';
       ctx.fillRect(0, 0, size, size);
-
       const ox = (size - img.width) / 2;
       const oy = (size - img.height) / 2;
       ctx.clearRect(
@@ -174,7 +166,6 @@ async function createMask(imageBase64, bbox) {
         bbox.width * img.width,
         bbox.height * img.height
       );
-
       resolve(canvas.toDataURL('image/png').split(',')[1]);
     };
     img.src = imageBase64;
